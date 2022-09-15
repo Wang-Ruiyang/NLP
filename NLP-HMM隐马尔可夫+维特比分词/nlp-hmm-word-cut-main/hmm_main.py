@@ -47,7 +47,7 @@ class HMM:
 
         # 发射矩阵, 使用的 2级 字典嵌套
         # # 注意这里初始化了一个  total 键 , 存储当前状态出现的总次数, 为了后面的归一化使用
-        self.emit_matrix = {"B":{"total":0}, "M":{"total":0}, "S":{"total":0}, "E":{"total":0}}     #双重字典，可以用矩阵实现
+        self.emit_matrix = {"B":{"total":0}, "M":{"total":0}, "S":{"total":0}, "E":{"total":0}}     #双重字典，可以用矩阵实现。注意每个状态都设置了一个total键,存储当前状态出现的总次数,为了后面的归一化使用
 
     # 计算 初始矩阵（计算每行的第一个字是什么状态）
     def cal_init_matrix(self, state):
@@ -58,22 +58,27 @@ class HMM:
     def cal_transfer_matrix(self, states):
         # transfer_matrix，转移状态矩阵:4 * 4
         sta_join = "".join(states)        # 状态转移 从当前状态转移到后一状态, 即 从 sta1 每一元素转移到 sta2 中
-        sta1 = sta_join[:-1]
-        sta2 = sta_join[1:]
-        for s1, s2 in zip(sta1, sta2):   # 同时遍历 s1 , s2
+        sta1 = sta_join[:-1]    #选取一行文字的全部内容
+        sta2 = sta_join[1:]     #选取一行文字的第二个字符开始的全部内容
+        for s1, s2 in zip(sta1, sta2):   # 同时遍历 s1,s2，zip()将sta1和sta2每对字符组合
             self.transfer_matrix[self.states_to_index[s1],self.states_to_index[s2]] += 1
 
     # 计算发射矩阵（统计某种状态下，所有字出现的次数（概率））
     def cal_emit_matrix(self, words, states):
-        for word, state in zip("".join(words), "".join(states)):  # 先把words 和 states 拼接起来再遍历, 因为中间有空格
-            self.emit_matrix[state][word] = self.emit_matrix[state].get(word,0) + 1
-            self.emit_matrix[state]["total"] += 1   # 注意这里多添加了一个  total 键 , 存储当前状态出现的总次数, 为了后面的归一化使用
+        for word, state in zip("".join(words), "".join(states)):  #将words列表和states列表各拼接为字符串，再将对应的字符对应（及字符与状态之间的对应）
+            self.emit_matrix[state][word] = self.emit_matrix[state].get(word,0) + 1   #对于BMSE四种状态而言，用get方法搜索word出现的次数再+1；如果没有则输入0再+1。
+            self.emit_matrix[state]["total"] += 1         #将总出现次数total+1
 
     # 将矩阵归一化（将矩阵中的次数转为出现的概率）
     def normalize(self):
-        self.init_matrix = self.init_matrix/np.sum(self.init_matrix)
+        self.init_matrix = self.init_matrix/np.sum(self.init_matrix)     #axis=None时，np.sum即为求出整个矩阵的和
         self.transfer_matrix = self.transfer_matrix/np.sum(self.transfer_matrix,axis = 1,keepdims = True)     #原矩阵表示行标->列标的次数，因此每一行的概率和应该为1
         self.emit_matrix = {state:{word:t/word_times["total"]*1000 for word,t in word_times.items() if word != "total"} for state,word_times in self.emit_matrix.items()}
+        # for state, word_times in self.emit_matrix.items():
+        #         for word, t in word_times.items():
+        #             if word != "total":
+        #                 result = t / word_times["total"] * 1000
+        #                 self.emit_matrix[state][word] = result
 
     # 训练开始, 其实就是3个矩阵的求解过程
     def train(self):
@@ -93,29 +98,32 @@ class HMM:
         pickle.dump([self.init_matrix, self.transfer_matrix, self.emit_matrix], open("three_matrix.pkl", "wb")) # 保存参数，方便以后使用，pickle.dump()用于将二进制对象文件转换成Python对象，open("three_matrix.pkl", "wb")返回的是文件的f
 
 # 预测
-def viterbi_t( text, hmm):
-    states = hmm.index_to_states
-    emit_p = hmm.emit_matrix
-    trans_p = hmm.transfer_matrix
-    start_p = hmm.init_matrix
-    V = [{}]
+def viterbi_t(text, hmm):
+    states = hmm.index_to_states     #四种状态
+    emit_p = hmm.emit_matrix         #发射矩阵
+    trans_p = hmm.transfer_matrix    #状态转移矩阵
+    start_p = hmm.init_matrix        #初始矩阵
+    V = [{}]     #到当前字符的四个状态的最大概率
     path = {}
+    # 设置开头
     for y in states:
+        # hmm.states_to_index[y]表示y状态对应的下标，start_p[]表示再y状态下作为一行开头的概率；emit_p[y]表示由y状态转移出去的那一行，.get(text[0], 0)表示搜索传入文本第一个字的概率，如果没有就设置为0
         V[0][y] = start_p[hmm.states_to_index[y]] * emit_p[y].get(text[0], 0)
         path[y] = [y]
+    # 填充正文内容
     for t in range(1, len(text)):
         V.append({})
         newpath = {}
 
-        # 检验训练的发射概率矩阵中是否有该字
+        # 检验训练的发射概率矩阵中是否有该字，结果为true或false
         neverSeen = text[t] not in emit_p['S'].keys() and \
                     text[t] not in emit_p['M'].keys() and \
                     text[t] not in emit_p['E'].keys() and \
                     text[t] not in emit_p['B'].keys()
         for y in states:
-            emitP = emit_p[y].get(text[t], 0) if not neverSeen else 1.0  # 设置未知字单独成词
+            emitP = emit_p[y].get(text[t], 0) if not neverSeen else 1.0  # 如果文字再发射矩阵中，那么get出来，反之，赋值1。设置未知字单独成词
             temp = []
-            for y0 in states:
+            for y0 in states:    #当前字的四个状态
                 if V[t - 1][y0] > 0:
                     temp.append((V[t - 1][y0] * trans_p[hmm.states_to_index[y0],hmm.states_to_index[y]] * emitP, y0))
             (prob, state) = max(temp)
