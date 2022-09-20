@@ -97,7 +97,7 @@ class HMM:
         self.normalize()      # 矩阵求完之后进行归一化
         pickle.dump([self.init_matrix, self.transfer_matrix, self.emit_matrix], open("three_matrix.pkl", "wb")) # 保存参数，方便以后使用，pickle.dump()用于将二进制对象文件转换成Python对象，open("three_matrix.pkl", "wb")返回的是文件的f
 
-# 预测
+# 预测（核心思想，start到每个字的四个状态都有唯一的一个最优路径）
 def viterbi_t(text, hmm):
     states = hmm.index_to_states     #四种状态
     emit_p = hmm.emit_matrix         #发射矩阵
